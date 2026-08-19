@@ -1,0 +1,354 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model usuario {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  usuario        String   @unique
+  password_hash  String
+  rol            String
+  activo         Boolean  @default(true)
+  creado_en      DateTime @default(now())
+  actualizado_en DateTime @updatedAt
+
+  ventas             venta[]             @relation("VentaUsuario")
+  ventas_anuladas    venta[]             @relation("VentaAnulacionUsuario")
+  movimientos_stock  movimiento_stock[]  @relation("MovimientoStockUsuario")
+  compras            compra[]            @relation("CompraUsuario")
+  compras_anuladas   compra[]            @relation("CompraAnulacionUsuario")
+  gastos             gasto[]             @relation("GastoUsuario")
+  gastos_anulados    gasto[]             @relation("GastoAnulacionUsuario")
+  cajas_abiertas     caja_sesion[]       @relation("CajaSesionApertura")
+  cajas_cerradas     caja_sesion[]       @relation("CajaSesionCierre")
+  caja_movimientos   caja_movimiento[]   @relation("CajaMovimientoUsuario")
+  movimientos_cuenta movimiento_cuenta[] @relation("MovimientoCuentaUsuario")
+  auditorias         auditoria[]         @relation("AuditoriaUsuario")
+  backups            backup_log[]        @relation("BackupLogUsuario")
+}
+
+model producto {
+  id                 Int      @id @default(autoincrement())
+  nombre             String
+  categoria          String?
+  unidad             String   @default("UNIDAD")
+  precio_venta_cents Int
+  costo_cents        Int
+  stock_actual_mil   Int      @default(0)
+  stock_minimo_mil   Int      @default(0)
+  controla_stock     Boolean  @default(true)
+  precio_libre       Boolean  @default(false)
+  activo             Boolean  @default(true)
+  creado_en          DateTime @default(now())
+  actualizado_en     DateTime @updatedAt
+
+  codigos_barra     codigo_barra[]
+  venta_items       venta_item[]
+  movimientos_stock movimiento_stock[]
+  compra_items      compra_item[]
+
+  @@index([nombre])
+}
+
+model codigo_barra {
+  id          Int      @id @default(autoincrement())
+  producto_id Int
+  codigo      String   @unique
+  creado_en   DateTime @default(now())
+
+  producto producto @relation(fields: [producto_id], references: [id])
+
+  @@index([producto_id])
+}
+
+model medio_pago {
+  id          Int     @id @default(autoincrement())
+  nombre      String  @unique
+  tipo        String
+  comision_bp Int     @default(0)
+  orden       Int     @default(0)
+  activo      Boolean @default(true)
+
+  venta_pagos        venta_pago[]
+  movimientos_cuenta movimiento_cuenta[] @relation("MovimientoCuentaMedioPago")
+}
+
+model cliente {
+  id                   Int      @id @default(autoincrement())
+  nombre               String
+  telefono             String?
+  limite_credito_cents Int?
+  saldo_cents          Int      @default(0)
+  activo               Boolean  @default(true)
+  creado_en            DateTime @default(now())
+  actualizado_en       DateTime @updatedAt
+
+  ventas             venta[]
+  movimientos_cuenta movimiento_cuenta[]
+}
+
+model venta {
+  id                   Int       @id @default(autoincrement())
+  numero               Int       @unique
+  fecha                DateTime
+  usuario_id           Int
+  caja_sesion_id       Int
+  cliente_id           Int?
+  total_cents          Int
+  recibido_cents       Int?
+  vuelto_cents         Int?
+  estado               String
+  usuario_anulacion_id Int?
+  fecha_anulacion      DateTime?
+  motivo_anulacion     String?
+
+  usuario           usuario     @relation("VentaUsuario", fields: [usuario_id], references: [id])
+  usuario_anulacion usuario?    @relation("VentaAnulacionUsuario", fields: [usuario_anulacion_id], references: [id])
+  caja_sesion       caja_sesion @relation("VentaCajaSesion", fields: [caja_sesion_id], references: [id])
+  cliente           cliente?    @relation(fields: [cliente_id], references: [id])
+
+  items              venta_item[]
+  pagos              venta_pago[]
+  movimientos_stock  movimiento_stock[]  @relation("MovimientoStockVenta")
+  caja_movimientos   caja_movimiento[]   @relation("CajaMovimientoVenta")
+  movimientos_cuenta movimiento_cuenta[] @relation("MovimientoCuentaVenta")
+
+  @@index([fecha])
+  @@index([caja_sesion_id])
+}
+
+model venta_item {
+  id                    Int    @id @default(autoincrement())
+  venta_id              Int
+  producto_id           Int
+  descripcion           String
+  unidad                String
+  cantidad_mil          Int
+  precio_unitario_cents Int
+  costo_unitario_cents  Int
+  subtotal_cents        Int
+
+  venta    venta    @relation(fields: [venta_id], references: [id])
+  producto producto @relation(fields: [producto_id], references: [id])
+
+  @@index([venta_id])
+  @@index([producto_id])
+}
+
+model venta_pago {
+  id             Int @id @default(autoincrement())
+  venta_id       Int
+  medio_pago_id  Int
+  monto_cents    Int
+  comision_cents Int @default(0)
+
+  venta      venta      @relation(fields: [venta_id], references: [id])
+  medio_pago medio_pago @relation(fields: [medio_pago_id], references: [id])
+
+  @@index([venta_id])
+  @@index([medio_pago_id])
+}
+
+// append-only
+model movimiento_stock {
+  id                   Int      @id @default(autoincrement())
+  producto_id          Int
+  tipo                 String
+  motivo               String?
+  cantidad_mil         Int
+  costo_unitario_cents Int?
+  venta_id             Int?
+  compra_id            Int?
+  usuario_id           Int
+  nota                 String?
+  fecha                DateTime @default(now())
+
+  producto producto @relation(fields: [producto_id], references: [id])
+  venta    venta?   @relation("MovimientoStockVenta", fields: [venta_id], references: [id])
+  compra   compra?  @relation("MovimientoStockCompra", fields: [compra_id], references: [id])
+  usuario  usuario  @relation("MovimientoStockUsuario", fields: [usuario_id], references: [id])
+
+  @@index([producto_id, fecha])
+}
+
+model compra {
+  id                   Int       @id @default(autoincrement())
+  fecha                DateTime
+  proveedor_nombre     String
+  comprobante_nro      String?
+  total_cents          Int
+  pago_tipo            String
+  caja_sesion_id       Int?
+  usuario_id           Int
+  estado               String
+  usuario_anulacion_id Int?
+  fecha_anulacion      DateTime?
+
+  caja_sesion       caja_sesion? @relation("CompraCajaSesion", fields: [caja_sesion_id], references: [id])
+  usuario           usuario      @relation("CompraUsuario", fields: [usuario_id], references: [id])
+  usuario_anulacion usuario?     @relation("CompraAnulacionUsuario", fields: [usuario_anulacion_id], references: [id])
+
+  items             compra_item[]
+  movimientos_stock movimiento_stock[] @relation("MovimientoStockCompra")
+  caja_movimientos  caja_movimiento[]  @relation("CajaMovimientoCompra")
+}
+
+model compra_item {
+  id                   Int     @id @default(autoincrement())
+  compra_id            Int
+  producto_id          Int
+  cantidad_mil         Int
+  costo_unitario_cents Int
+  subtotal_cents       Int
+  actualiza_costo      Boolean @default(true)
+
+  compra   compra   @relation(fields: [compra_id], references: [id])
+  producto producto @relation(fields: [producto_id], references: [id])
+
+  @@index([compra_id])
+  @@index([producto_id])
+}
+
+model gasto {
+  id                   Int       @id @default(autoincrement())
+  fecha                DateTime
+  concepto             String
+  descripcion          String
+  monto_cents          Int
+  pago_tipo            String
+  caja_sesion_id       Int?
+  usuario_id           Int
+  estado               String
+  usuario_anulacion_id Int?
+  fecha_anulacion      DateTime?
+
+  caja_sesion       caja_sesion? @relation("GastoCajaSesion", fields: [caja_sesion_id], references: [id])
+  usuario           usuario      @relation("GastoUsuario", fields: [usuario_id], references: [id])
+  usuario_anulacion usuario?     @relation("GastoAnulacionUsuario", fields: [usuario_anulacion_id], references: [id])
+
+  caja_movimientos caja_movimiento[] @relation("CajaMovimientoGasto")
+}
+
+model caja_sesion {
+  id                     Int       @id @default(autoincrement())
+  fecha_apertura         DateTime  @default(now())
+  usuario_apertura_id    Int
+  monto_inicial_cents    Int
+  fecha_cierre           DateTime?
+  usuario_cierre_id      Int?
+  conteo_declarado_cents Int?
+  esperado_cents         Int?
+  diferencia_cents       Int?
+  estado                 String    @default("ABIERTA")
+  nota_cierre            String?
+
+  usuario_apertura usuario  @relation("CajaSesionApertura", fields: [usuario_apertura_id], references: [id])
+  usuario_cierre   usuario? @relation("CajaSesionCierre", fields: [usuario_cierre_id], references: [id])
+
+  ventas           venta[]           @relation("VentaCajaSesion")
+  compras          compra[]          @relation("CompraCajaSesion")
+  gastos           gasto[]           @relation("GastoCajaSesion")
+  caja_movimientos caja_movimiento[] @relation("CajaMovimientoCajaSesion")
+
+  // Índice único parcial (RN-21) agregado a mano en la migración SQL:
+  // CREATE UNIQUE INDEX una_caja_abierta ON caja_sesion(estado) WHERE estado = 'ABIERTA';
+}
+
+// append-only
+model caja_movimiento {
+  id                   Int      @id @default(autoincrement())
+  caja_sesion_id       Int
+  tipo                 String
+  monto_cents          Int
+  venta_id             Int?
+  gasto_id             Int?
+  compra_id            Int?
+  movimiento_cuenta_id Int?
+  usuario_id           Int
+  nota                 String?
+  fecha                DateTime @default(now())
+
+  caja_sesion       caja_sesion        @relation("CajaMovimientoCajaSesion", fields: [caja_sesion_id], references: [id])
+  venta             venta?             @relation("CajaMovimientoVenta", fields: [venta_id], references: [id])
+  gasto             gasto?             @relation("CajaMovimientoGasto", fields: [gasto_id], references: [id])
+  compra            compra?            @relation("CajaMovimientoCompra", fields: [compra_id], references: [id])
+  movimiento_cuenta movimiento_cuenta? @relation("CajaMovimientoMovimientoCuenta", fields: [movimiento_cuenta_id], references: [id])
+  usuario           usuario            @relation("CajaMovimientoUsuario", fields: [usuario_id], references: [id])
+
+  @@index([caja_sesion_id])
+}
+
+// append-only
+model movimiento_cuenta {
+  id            Int      @id @default(autoincrement())
+  cliente_id    Int
+  tipo          String
+  monto_cents   Int
+  venta_id      Int?
+  medio_pago_id Int?
+  usuario_id    Int
+  nota          String?
+  fecha         DateTime @default(now())
+
+  cliente    cliente     @relation(fields: [cliente_id], references: [id])
+  venta      venta?      @relation("MovimientoCuentaVenta", fields: [venta_id], references: [id])
+  medio_pago medio_pago? @relation("MovimientoCuentaMedioPago", fields: [medio_pago_id], references: [id])
+  usuario    usuario     @relation("MovimientoCuentaUsuario", fields: [usuario_id], references: [id])
+
+  caja_movimientos caja_movimiento[] @relation("CajaMovimientoMovimientoCuenta")
+
+  @@index([cliente_id, fecha])
+}
+
+// solo INSERT
+model auditoria {
+  id            Int      @id @default(autoincrement())
+  fecha         DateTime @default(now())
+  usuario_id    Int?
+  entidad       String
+  entidad_id    Int?
+  accion        String
+  datos_antes   String?
+  datos_despues String?
+  resumen       String?
+
+  usuario usuario? @relation("AuditoriaUsuario", fields: [usuario_id], references: [id])
+
+  @@index([fecha])
+  @@index([entidad, entidad_id])
+}
+
+model contador {
+  nombre String @id
+  valor  Int    @default(0)
+}
+
+model parametro {
+  clave       String  @id
+  valor       String
+  descripcion String?
+}
+
+model backup_log {
+  id           Int      @id @default(autoincrement())
+  fecha        DateTime @default(now())
+  tipo         String
+  ruta         String
+  tamano_bytes Int?
+  estado       String
+  mensaje      String?
+  usuario_id   Int?
+
+  usuario usuario? @relation("BackupLogUsuario", fields: [usuario_id], references: [id])
+}
