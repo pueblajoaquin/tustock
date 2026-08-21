@@ -264,11 +264,11 @@ Convenciones: `INTEGER` para todo lo monetario (centavos) y todos los ids. `TEXT
 
 ### 8.1 Lo que garantiza la base de datos
 
-- **Claves foráneas.** Todas las declaradas en §7, con `PRAGMA foreign_keys = ON` activado en cada conexión (SQLite lo trae apagado por defecto).
+- **Claves foráneas.** Todas las declaradas en la sección 7, con `PRAGMA foreign_keys = ON` activado en cada conexión (SQLite lo trae apagado por defecto).
 - **`ON DELETE RESTRICT` en todo.** Nada se borra, así que ningún borrado en cascada debería existir jamás. La única excepción razonable: `codigo_barra` con cascada desde `producto`, y aun así conviene RESTRICT y baja lógica.
 - **UNIQUE:** `usuario.usuario`, `codigo_barra.codigo`, `venta.numero`, `medio_pago.nombre`, `contador.nombre`, `parametro.clave`.
 - **Índice único parcial** para RN-21: `CREATE UNIQUE INDEX una_caja_abierta ON caja_sesion(estado) WHERE estado = 'ABIERTA'`. Es la única forma barata de que "una sola caja abierta" sea imposible de violar aun con dos terminales apretando el botón a la vez. Se agrega con una migración SQL manual porque Prisma no expresa índices parciales.
-- **NOT NULL** en todo lo que no esté marcado como NULL en §7.
+- **NOT NULL** en todo lo que no esté marcado como NULL en la sección 7.
 - **CHECK** en los pocos lugares donde vale la pena: `cantidad_mil <> 0` en `movimiento_stock`, `monto_cents <> 0` en `caja_movimiento`, `monto_cents <> 0` en `movimiento_cuenta`, `monto_cents > 0` en `venta_pago`, `saldo_cents >= 0` en `cliente` (RN-40).
 - **Índices de rendimiento:** `producto(nombre)`, `venta(fecha)`, `venta(caja_sesion_id)`, `movimiento_stock(producto_id, fecha)`, `caja_movimiento(caja_sesion_id)`, `movimiento_cuenta(cliente_id, fecha)`, `auditoria(fecha)`, `auditoria(entidad, entidad_id)`.
 - **WAL activado** (`PRAGMA journal_mode = WAL`) y `busy_timeout = 5000`: lecturas concurrentes sin bloquear la escritura de la venta.
